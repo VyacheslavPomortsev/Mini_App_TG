@@ -1,46 +1,40 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 app = FastAPI()
 
-# 🔓 CORS (ОЧЕНЬ ВАЖНО для Mini App)
+# --- CORS (обязательно для Mini App) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # позже можно ограничить
+    allow_origins=["*"],   # для начала разрешаем всё
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ===== MODELS =====
-
-class Expense(BaseModel):
-    amount: int
-    category: str
-
-class Income(BaseModel):
-    amount: int
-
-# ===== ROUTES =====
-
+# --- Проверка, что API жив ---
 @app.get("/")
 def root():
-    return {"status": "ok"}
+    return {"status": "API is running"}
 
+# --- Добавить расход ---
 @app.post("/expense")
-def add_expense(expense: Expense):
+def add_expense(data: dict):
+    print("EXPENSE:", data)
     return {
+        "ok": True,
         "message": "Расход добавлен",
-        "amount": expense.amount,
-        "category": expense.category
+        "data": data
     }
 
+# --- Добавить доход ---
 @app.post("/income")
-def add_income(income: Income):
+def add_income(data: dict):
+    print("INCOME:", data)
     return {
+        "ok": True,
         "message": "Доход добавлен",
-        "amount": income.amount
+        "data": data
     }
 
 
