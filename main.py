@@ -1,41 +1,40 @@
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import json
 
 app = FastAPI()
 
-# --- CORS (обязательно для Mini App) ---
+# CORS (чтобы Mini App мог вызывать API)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # для начала разрешаем всё
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Проверка, что API жив ---
-@app.get("/")
-def root():
-    return {"status": "API is running"}
+# 📂 раздаём статические файлы
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# --- Добавить расход ---
+
+# 👉 Mini App
+@app.get("/", response_class=HTMLResponse)
+def mini_app():
+    with open("static/index.html", encoding="utf-8") as f:
+        return f.read()
+
+
+# 👉 API
 @app.post("/expense")
-def add_expense(data: dict):
-    print("EXPENSE:", data)
-    return {
-        "ok": True,
-        "message": "Расход добавлен",
-        "data": data
-    }
+async def add_expense(data: dict):
+    return {"ok": True, "type": "expense", "data": data}
 
-# --- Добавить доход ---
+
 @app.post("/income")
-def add_income(data: dict):
-    print("INCOME:", data)
-    return {
-        "ok": True,
-        "message": "Доход добавлен",
-        "data": data
-    }
+async def add_income(data: dict):
+    return {"ok": True, "type": "income", "data": data}
+
 
 
 
