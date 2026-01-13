@@ -1,7 +1,7 @@
 import os
 import json
 import sqlite3
-from datetime import datetime, time
+from datetime import datetime
 
 from telegram import (
     Update,
@@ -25,7 +25,9 @@ if not TELEGRAM_TOKEN:
     raise RuntimeError("❌ TELEGRAM_TOKEN не задан")
 
 DB_NAME = "finance.db"
-MINI_APP_URL = "https://vyacheslavpomortsev.github.io/finance-mini-app/"
+
+# URL Mini App (Railway)
+MINI_APP_URL = "https://miniapptg-production-fd88.up.railway.app"
 
 CATEGORIES = {
     "food": "🍔 Еда",
@@ -212,13 +214,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_keyboard()
     )
 
+# ---------- MINI APP DATA ----------
 async def webapp_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = json.loads(update.message.web_app_data.data)
-    if data["type"] == "expense":
-        await update.message.reply_text("Введите расход:\n`500 еда`", parse_mode="Markdown")
-    elif data["type"] == "income":
-        await update.message.reply_text("Введите доход:\n`5000 доход`", parse_mode="Markdown")
+    if not update.message or not update.message.web_app_data:
+        return
 
+    data = json.loads(update.message.web_app_data.data)
+    action = data.get("type")
+
+    if action == "expense":
+        await update.message.reply_text(
+            "✍️ Введите расход:\n`500 еда`",
+            parse_mode="Markdown"
+        )
+
+    elif action == "income":
+        await update.message.reply_text(
+            "✍️ Введите доход:\n`5000 доход`",
+            parse_mode="Markdown"
+        )
+
+# ---------- INLINE BUTTONS ----------
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -231,7 +247,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.message.reply_text("Введите доход:\n`5000 доход`", parse_mode="Markdown")
 
     elif q.data in ("today", "week", "month"):
-        days = {"today": 1, "week": 7, "month": 30}[q.data]
+        days = {"today": None, "week": 7, "month": 30}[q.data]
+
         inc = get_incomes(uid, days)
         exp = get_expenses(uid, days)
         bal = inc - exp
@@ -244,66 +261,58 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{sign} Баланс: {bal} ₽\n\n"
         )
 
-        cats = get_expenses_by_category(uid, days)
-        for c, a in cats:
-            text += f"{CATEGORIES.get(c, c)} — {a} ₽\n"
+        if days:
+            for c, a in get_expenses_by_category(uid, days):
+                text += f"{CATEGORIES.get(c, c)} — {a} ₽\n"
 
         await q.message.reply_text(text, parse_mode="Markdown", reply_markup=main_keyboard())
 
     elif q.data == "credits":
         credits = get_credits(uid)
         if not credits:
-            await q.message.reply_text(
-                "Кредитов нет",
-                reply_markup=credits_keyboard()
-            )
+            await q.message.reply_text("Кредитов нет", reply_markup=credits_keyboard())
             return
+
         text = "*Ваши кредиты:*\n\n"
         for n, a, d in credits:
             text += f"{n}: {a} ₽, день {d}\n"
+
         await q.message.reply_text(text, parse_mode="Markdown", reply_markup=credits_keyboard())
 
     elif q.data == "credit_add":
-        await q.message.reply_text(
-            "`кредит <название> <сумма> <день>`",
-            parse_mode="Markdown"
-        )
+        await q.message.reply_text("`кредит <название> <сумма> <день>`", parse_mode="Markdown")
 
     elif q.data == "credit_delete":
-        await q.message.reply_text(
-            "`удалить <название>`",
-            parse_mode="Markdown"
-        )
+        await q.message.reply_text("`удалить <название>`", parse_mode="Markdown")
 
     elif q.data == "back":
         await q.message.reply_text("Главное меню", reply_markup=main_keyboard())
 
+# ---------- TEXT ----------
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    text = update.message.text.lower().split()
+    parts = update.message.text.lower().split()
 
-    if len(text) == 2 and text[1] == "доход":
-        add_income(uid, int(text[0]))
-        await update.message.reply_text("Доход добавлен", reply_markup=main_keyboard())
+    if len(parts) == 2 and parts[1] == "доход" and parts[0].isdigit():
+        add_income(uid, int(parts[0]))
+        await update.message.reply_text("💰 Доход добавлен", reply_markup=main_keyboard())
         return
 
-    if len(text) == 2:
-        amount, cat = text
+    if len(parts) == 2 and parts[0].isdigit():
         for k, v in CATEGORIES.items():
-            if cat in v.lower():
-                add_expense(uid, int(amount), k)
-                await update.message.reply_text("Расход добавлен", reply_markup=main_keyboard())
+            if parts[1] in v.lower():
+                add_expense(uid, int(parts[0]), k)
+                await update.message.reply_text("➕ Расход добавлен", reply_markup=main_keyboard())
                 return
 
-    if len(text) == 4 and text[0] == "кредит":
-        _, name, amount, day = text
-        add_credit(uid, name, int(amount), int(day))
-        await update.message.reply_text("Кредит добавлен", reply_markup=main_keyboard())
+    if len(parts) == 4 and parts[0] == "кредит" and parts[2].isdigit() and parts[3].isdigit():
+        add_credit(uid, parts[1], int(parts[2]), int(parts[3]))
+        await update.message.reply_text("🏦 Кредит добавлен", reply_markup=main_keyboard())
         return
 
-    if len(text) == 2 and text[0] == "удалить":
-        delete_credit(uid, text[1])
-        await update.message.reply_text("Кредит удалён", reply_markup=main_keyboard())
+    if len(parts) == 2 and parts[0] == "удалить":
+        delete_credit(uid, parts[1])
+        await update.message.reply_text("🗑 Кредит удалён", reply_markup=main_keyboard())
 
 # ================== ЗАПУСК ==================
 
